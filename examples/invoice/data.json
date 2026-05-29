@@ -1,0 +1,22 @@
+{
+  "invoice_no": "INV-1042",
+  "customer": "Acme Corp",
+  "date": "2025-05-29",
+  "lines": [
+    {
+      "description": "Widget A",
+      "qty": 10,
+      "unit_price": 12.5
+    },
+    {
+      "description": "Widget B",
+      "qty": 3,
+      "unit_price": 49
+    },
+    {
+      "description": "Support hours",
+      "qty": 5,
+      "unit_price": 95
+    }
+  ]
+}
