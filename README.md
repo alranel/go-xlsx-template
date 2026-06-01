@@ -20,6 +20,16 @@ go build -o go-xlsx-template ./cmd/go-xlsx-template
 go-xlsx-template -template report.xlsx -data data.json -output filled.xlsx
 ```
 
+### Validate template syntax
+
+Check that all template tags compile and `{%tr %}` blocks are well-formed, without JSON data:
+
+```bash
+go-xlsx-template -validate -template report.xlsx
+```
+
+Writes a JSON result to stdout (`valid`, `issue_count`, `issues`). Exit code `0` when valid, `1` when invalid or the workbook cannot be opened. Use `-report path.json` to write the same JSON to a file instead of stdout.
+
 ### Fault-tolerant rendering (default)
 
 By default the tool **always writes** `output` when rendering can continue. Recoverable problems (undefined variables, bad expressions, failed `{%tr %}` iterable/condition) leave the original template text in place and are collected as issues.

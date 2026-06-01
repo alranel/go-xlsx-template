@@ -15,12 +15,19 @@ func main() {
 	templatePath := flag.String("template", "", "path to the .xlsx template file")
 	dataPath := flag.String("data", "", "path to the JSON data file")
 	outputPath := flag.String("output", "", "path for the rendered .xlsx output")
-	reportPath := flag.String("report", "", "write recoverable issues as JSON to this path")
+	reportPath := flag.String("report", "", "write issues as JSON to this path (render mode) or override validation JSON destination")
 	strict := flag.Bool("strict", false, "exit with error if any recoverable issue was recorded (output is not written)")
+	validate := flag.Bool("validate", false, "validate template syntax only (-template required; no -data or -output)")
 	flag.Parse()
+
+	if *validate {
+		runValidate(*templatePath, *dataPath, *outputPath, *reportPath)
+		return
+	}
 
 	if *templatePath == "" || *dataPath == "" || *outputPath == "" {
 		fmt.Fprintln(os.Stderr, "usage: go-xlsx-template -template <file.xlsx> -data <file.json> -output <file.xlsx>")
+		fmt.Fprintln(os.Stderr, "       go-xlsx-template -validate -template <file.xlsx>")
 		flag.PrintDefaults()
 		os.Exit(2)
 	}
@@ -34,7 +41,7 @@ func main() {
 	opts := xlsx.RenderOptions{Strict: *strict}
 	res, err := xlsx.RenderFileWithResult(*templatePath, *outputPath, ctx, opts)
 	if err != nil {
-		writeReport(*reportPath, res.Issues)
+		writeRenderReport(*reportPath, res.Issues)
 		if summary := render.SummaryFrom(res.Issues); summary != "" {
 			fmt.Fprint(os.Stderr, summary)
 		}
@@ -42,13 +49,57 @@ func main() {
 		os.Exit(1)
 	}
 
-	writeReport(*reportPath, res.Issues)
+	writeRenderReport(*reportPath, res.Issues)
 	if summary := render.SummaryFrom(res.Issues); summary != "" {
 		fmt.Fprint(os.Stderr, summary)
 	}
 }
 
-func writeReport(path string, issues []render.Issue) {
+func runValidate(templatePath, dataPath, outputPath, reportPath string) {
+	if templatePath == "" {
+		fmt.Fprintln(os.Stderr, "usage: go-xlsx-template -validate -template <file.xlsx>")
+		flag.PrintDefaults()
+		os.Exit(2)
+	}
+	if dataPath != "" || outputPath != "" {
+		fmt.Fprintln(os.Stderr, "validate mode: -data and -output are not used")
+		os.Exit(2)
+	}
+
+	res, err := xlsx.ValidateFile(templatePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "validate: %v\n", err)
+		os.Exit(1)
+	}
+
+	out := os.Stdout
+	if reportPath != "" {
+		f, err := os.Create(reportPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "report: %v\n", err)
+			os.Exit(1)
+		}
+		defer f.Close()
+		out = f
+	}
+
+	if err := json.NewEncoder(out).Encode(res); err != nil {
+		fmt.Fprintf(os.Stderr, "report: %v\n", err)
+		os.Exit(1)
+	}
+	if reportPath != "" {
+		// When writing to a file, also mirror a compact line to stderr for humans in CI logs.
+		if !res.Valid {
+			fmt.Fprintf(os.Stderr, "invalid: %d issue(s), see %s\n", res.IssueCount, reportPath)
+		}
+	}
+
+	if !res.Valid {
+		os.Exit(1)
+	}
+}
+
+func writeRenderReport(path string, issues []render.Issue) {
 	if path == "" {
 		return
 	}
