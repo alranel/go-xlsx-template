@@ -202,6 +202,10 @@ func validateTemplateText(r *template.Renderer, loc valLoc, s string, c *validat
 	if !template.HasSyntax(s) {
 		return
 	}
+	// {%tr %} markers are expanded by the renderer, not gonja; expressions are checked in validateTRStructure.
+	if template.IsTRMarkerCell(s) {
+		return
+	}
 	if isFormulaTemplate(s) {
 		template.EachVarExpression(s, func(expr string) {
 			source := "{{ " + expr + " }}"

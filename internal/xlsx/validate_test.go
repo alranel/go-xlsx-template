@@ -2,6 +2,7 @@ package xlsx_test
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -107,6 +108,41 @@ func TestValidateFileJSONRoundTrip(t *testing.T) {
 	}
 	if decoded.Valid {
 		t.Fatal("expected invalid after round trip")
+	}
+}
+
+func TestValidateInvoiceTemplate(t *testing.T) {
+	path := filepath.Join("..", "..", "examples", "invoice", "template.xlsx")
+	if _, err := os.Stat(path); err != nil {
+		t.Skip("examples/invoice/template.xlsx not present")
+	}
+	res, err := xlsx.ValidateFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Valid {
+		t.Fatalf("expected valid invoice template, issues: %#v", res.Issues)
+	}
+}
+
+func TestValidateTRMarkerCellSkipped(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tpl.xlsx")
+	f := excelize.NewFile()
+	_ = f.SetCellValue("Sheet1", "A1", "{%tr for item in items %}")
+	_ = f.SetCellValue("Sheet1", "A2", "{{ item.name }}")
+	_ = f.SetCellValue("Sheet1", "A3", "{%tr endfor %}")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	res, err := xlsx.ValidateFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Valid {
+		t.Fatalf("expected valid, issues: %#v", res.Issues)
 	}
 }
 

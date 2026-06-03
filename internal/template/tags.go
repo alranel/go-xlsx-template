@@ -41,6 +41,11 @@ func HasSyntax(s string) bool {
 
 // FindTRMarkerLine reports whether s is only a {%tr %} tag (optional whitespace).
 func FindTRMarkerLine(s string) bool {
+	return IsTRMarkerCell(s)
+}
+
+// IsTRMarkerCell reports whether cell text is only a recognized {%tr %} row marker.
+func IsTRMarkerCell(s string) bool {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return false
