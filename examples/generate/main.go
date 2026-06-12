@@ -88,8 +88,15 @@ func writeInvoice(path string) error {
 	_ = f.SetCellFormula(sheet, "D7", "={{ line.qty }}*{{ line.unit_price }}")
 	_ = f.SetCellValue(sheet, "A8", "{%tr endfor %}")
 
-	_ = f.SetCellValue(sheet, "C10", "Subtotal")
-	_ = f.SetCellFormula(sheet, "D10", "=SUM(D7:D9)")
+	_ = f.SetCellValue(sheet, "A9", "{%tr if show_notes %}")
+	_ = f.SetCellValue(sheet, "A10", "Notes")
+	_ = f.SetCellValue(sheet, "B10", "{{ notes }}")
+	_ = f.SetCellValue(sheet, "A11", "Payment terms")
+	_ = f.SetCellValue(sheet, "B11", "{{ payment_terms }}")
+	_ = f.SetCellValue(sheet, "A12", "{%tr endif %}")
+
+	_ = f.SetCellValue(sheet, "C14", "Subtotal")
+	_ = f.SetCellFormula(sheet, "D14", "=SUM(D7:D9)")
 
 	return f.SaveAs(path)
 }

@@ -3,7 +3,7 @@
 | Example | What it demonstrates |
 |---------|----------------------|
 | [simple/](simple/) | Variables, `{% if %}`, formula placeholder (`={{ price }}*2`) |
-| [invoice/](invoice/) | `{%tr for %}` row loop, per-line formulas, multiple columns |
+| [invoice/](invoice/) | `{%tr for %}` row loop, multi-row `{%tr if %}`, per-line formulas, multiple columns |
 
 ## Quick start
 

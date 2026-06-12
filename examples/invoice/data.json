@@ -2,6 +2,9 @@
   "invoice_no": "INV-1042",
   "customer": "Acme Corp",
   "date": "2025-05-29",
+  "show_notes": true,
+  "notes": "Thank you for your business.",
+  "payment_terms": "Net 30",
   "lines": [
     {
       "description": "Widget A",
