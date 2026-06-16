@@ -311,6 +311,99 @@ func TestRenderRowIfTrue(t *testing.T) {
 	assertCell(t, g, "Sheet1", "A1", "visible")
 }
 
+func TestRenderSheetNameIfTrue(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "tpl.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	jsonPath := filepath.Join(dir, "data.json")
+
+	f := excelize.NewFile()
+	const sheet = "{% if foo %}Foobar{% endif %}"
+	idx, _ := f.NewSheet(sheet)
+	f.SetActiveSheet(idx)
+	_ = f.SetCellValue(sheet, "A1", "ok")
+	_, _ = f.NewSheet("Keep")
+	if err := f.DeleteSheet("Sheet1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SaveAs(tpl); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	if err := os.WriteFile(jsonPath, []byte(`{"foo":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := data.LoadContext(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xlsx.RenderFile(tpl, out, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := excelize.OpenFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	names := g.GetSheetList()
+	if len(names) != 2 {
+		t.Fatalf("sheets: %#v", names)
+	}
+	found := false
+	for _, n := range names {
+		if n == "Foobar" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected Foobar sheet, got %#v", names)
+	}
+}
+
+func TestRenderSheetNameIfFalseDeletes(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "tpl.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	jsonPath := filepath.Join(dir, "data.json")
+
+	f := excelize.NewFile()
+	const sheet = "{% if foo %}Foobar{% endif %}"
+	idx, _ := f.NewSheet(sheet)
+	f.SetActiveSheet(idx)
+	_ = f.SetCellValue(sheet, "A1", "gone")
+	_, _ = f.NewSheet("Keep")
+	if err := f.DeleteSheet("Sheet1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SaveAs(tpl); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	if err := os.WriteFile(jsonPath, []byte(`{"foo":false}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := data.LoadContext(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xlsx.RenderFile(tpl, out, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := excelize.OpenFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	names := g.GetSheetList()
+	if len(names) != 1 || names[0] != "Keep" {
+		t.Fatalf("sheets: %#v", names)
+	}
+}
+
 func TestRenderSheetName(t *testing.T) {
 	dir := t.TempDir()
 	tpl := filepath.Join(dir, "tpl.xlsx")

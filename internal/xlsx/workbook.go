@@ -32,7 +32,9 @@ func renderSheetNames(f *excelize.File, r *template.Renderer, ctx *exec.Context,
 		newName := r.RenderStringLenient(oldName, loc, ctx, rep)
 		newName = strings.TrimSpace(newName)
 		if newName == "" {
-			rep.Add(loc, render.KindSheetName, oldName, fmt.Errorf("sheet name rendered to empty string"))
+			if err := f.DeleteSheet(oldName); err != nil {
+				return fmt.Errorf("delete sheet %q after empty name render: %w", oldName, err)
+			}
 			continue
 		}
 		if utf8.RuneCountInString(newName) > maxSheetNameLen {

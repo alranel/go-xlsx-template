@@ -132,9 +132,10 @@ If the condition is false, the whole block (markers and body) is removed.
 
 ```
 Report {{ year }}
+{% if include_details %}Details{% endif %}
 ```
 
-Sheet names are rendered after sheet content. Excel limits names to 31 characters; invalid rendered names are left unchanged and recorded as issues.
+Sheet names are rendered after sheet content. Conditionals work like cell tags: when the rendered name is empty, the sheet is removed from the workbook. Excel limits names to 31 characters; names that are too long are left unchanged and recorded as issues.
 
 ## Filters and expressions
 
