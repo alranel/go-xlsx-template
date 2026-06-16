@@ -52,6 +52,11 @@ func RenderFileWithResult(templatePath, outputPath string, ctx *exec.Context, op
 	if opts.Strict && rep.HasIssues() {
 		return Result{Issues: rep.Issues()}, ErrStrictIssues
 	}
+	// Spreadsheet apps may show stale <v> cached results instead of recalculating
+	// after we rewrite formula text (e.g. templates edited in LibreOffice).
+	if err := f.UpdateLinkedValue(); err != nil {
+		return Result{Issues: rep.Issues()}, fmt.Errorf("clear formula cache: %w", err)
+	}
 	if err := f.SaveAs(outputPath); err != nil {
 		return Result{Issues: rep.Issues()}, fmt.Errorf("save output: %w", err)
 	}

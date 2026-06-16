@@ -1,8 +1,13 @@
 package xlsx_test
 
 import (
+	"archive/zip"
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/alranel/go-xlsx-template/internal/data"
@@ -88,6 +93,114 @@ func TestRenderFormula(t *testing.T) {
 	if formula != "=5*2" && formula != "=10" {
 		t.Fatalf("formula: %q", formula)
 	}
+}
+
+func TestRenderFormulaClearsStaleCachedValue(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "tpl.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	jsonPath := filepath.Join(dir, "data.json")
+
+	f := excelize.NewFile()
+	_ = f.SetCellFormula("Sheet1", "A1", "={{ price }}*2")
+	if err := f.SaveAs(tpl); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	if err := injectFormulaCachedValue(tpl, "A1", "0"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(jsonPath, []byte(`{"price":42.5}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := data.LoadContext(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xlsx.RenderFile(tpl, out, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	cellXML, err := sheetCellXML(out, "A1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cellXML, "<f>") {
+		t.Fatalf("expected formula in cell XML: %s", cellXML)
+	}
+	if strings.Contains(cellXML, "<v>") {
+		t.Fatalf("expected stale cached <v> to be cleared, got: %s", cellXML)
+	}
+}
+
+func injectFormulaCachedValue(xlsxPath, ref, stale string) error {
+	data, err := os.ReadFile(xlsxPath)
+	if err != nil {
+		return err
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	re := regexp.MustCompile(`(<c[^>]*r="` + regexp.QuoteMeta(ref) + `"[^>]*>.*?<f[^>]*>[^<]*</f>)`)
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		body, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return err
+		}
+		if strings.HasSuffix(f.Name, "sheet1.xml") {
+			body = re.ReplaceAll(body, []byte("${1}<v>"+stale+"</v>"))
+		}
+		w, err := zw.Create(f.Name)
+		if err != nil {
+			return err
+		}
+		if _, err := w.Write(body); err != nil {
+			return err
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return err
+	}
+	return os.WriteFile(xlsxPath, buf.Bytes(), 0o644)
+}
+
+func sheetCellXML(xlsxPath, ref string) (string, error) {
+	data, err := os.ReadFile(xlsxPath)
+	if err != nil {
+		return "", err
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return "", err
+	}
+	re := regexp.MustCompile(`<c[^>]*r="` + regexp.QuoteMeta(ref) + `"[^>]*>.*?</c>`)
+	for _, f := range zr.File {
+		if !strings.HasSuffix(f.Name, "sheet1.xml") {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return "", err
+		}
+		body, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return "", err
+		}
+		if m := re.FindString(string(body)); m != "" {
+			return m, nil
+		}
+	}
+	return "", nil
 }
 
 func TestRenderRowLoop(t *testing.T) {
