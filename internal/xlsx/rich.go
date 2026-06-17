@@ -23,6 +23,13 @@ func renderRichCell(f *excelize.File, sheet, cell string, r *template.Renderer, 
 		return false, nil
 	}
 	loc := render.Location{Sheet: sheet, Cell: cell}
+	if expr, ok := template.WholeCellVariable(combined); ok {
+		v, ok := r.RenderValueLenient(expr, loc, ctx, rep)
+		if !ok {
+			return true, nil
+		}
+		return true, setRenderedScalar(f, sheet, cell, v)
+	}
 	rendered := r.RenderStringLenient(combined, loc, ctx, rep)
 	font := runs[0].Font
 	if font == nil && len(runs) > 0 {

@@ -74,6 +74,13 @@ func renderEscapedFormulaCell(f *excelize.File, sheet, cell, val string, r *temp
 		return nil
 	}
 	loc := render.Location{Sheet: sheet, Cell: cell}
+	if expr, ok := wholeCellFormulaVariable(raw); ok {
+		v, ok := r.RenderValueLenient(expr, loc, ctx, rep)
+		if !ok {
+			return nil
+		}
+		return setRenderedScalar(f, sheet, cell, v)
+	}
 	out := renderFormulaTemplateLenient(raw, r, loc, ctx, rep)
 	return f.SetCellFormula(sheet, cell, out)
 }

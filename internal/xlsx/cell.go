@@ -3,6 +3,7 @@ package xlsx
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/alranel/go-xlsx-template/internal/render"
 	"github.com/alranel/go-xlsx-template/internal/template"
@@ -42,6 +43,13 @@ func renderCell(f *excelize.File, sheet, cell string, r *template.Renderer, ctx 
 			raw = val
 		}
 		if template.HasSyntax(raw) {
+			if expr, ok := wholeCellFormulaVariable(raw); ok {
+				v, ok := r.RenderValueLenient(expr, loc, ctx, rep)
+				if !ok {
+					return nil
+				}
+				return setRenderedScalar(f, sheet, cell, v)
+			}
 			out := renderFormulaTemplateLenient(raw, r, loc, ctx, rep)
 			if err := f.SetCellFormula(sheet, cell, out); err != nil {
 				return err
@@ -59,11 +67,47 @@ func renderCell(f *excelize.File, sheet, cell string, r *template.Renderer, ctx 
 		if !ok {
 			return nil
 		}
-		return f.SetCellValue(sheet, cell, formatCellScalar(v))
+		return setRenderedScalar(f, sheet, cell, v)
 	}
 
 	out := r.RenderStringLenient(val, loc, ctx, rep)
 	return f.SetCellValue(sheet, cell, out)
+}
+
+func setRenderedScalar(f *excelize.File, sheet, cell string, v any) error {
+	return f.SetCellValue(sheet, cell, cellScalarValue(v))
+}
+
+func wholeCellFormulaVariable(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if expr, ok := template.WholeCellVariable(raw); ok {
+		return expr, true
+	}
+	if strings.HasPrefix(raw, "=") {
+		return template.WholeCellVariable(strings.TrimSpace(raw[1:]))
+	}
+	return "", false
+}
+
+func cellScalarValue(v any) any {
+	switch x := v.(type) {
+	case string, bool, float64, float32, int, int64, int32:
+		return x
+	case nil:
+		return ""
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func isEmptyScalar(v any) bool {
+	if v == nil {
+		return true
+	}
+	if s, ok := v.(string); ok {
+		return s == ""
+	}
+	return false
 }
 
 func looksLikeFormulaCell(f *excelize.File, sheet, cell string) bool {

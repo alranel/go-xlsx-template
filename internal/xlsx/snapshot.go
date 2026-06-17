@@ -11,7 +11,7 @@ import (
 
 type cellSnapshot struct {
 	ref     string
-	value   string
+	value   any
 	formula string
 	rich    []excelize.RichTextRun
 	styleID int
@@ -92,13 +92,31 @@ func renderSnapshots(f *excelize.File, sheet string, rows []rowSnapshot, r *temp
 			c := &row.cells[i]
 			loc := render.Location{Sheet: sheet, Cell: c.ref}
 			if c.formula != "" && template.HasSyntax(c.formula) {
-				c.formula = renderFormulaTemplateLenient(c.formula, r, loc, ctx, rep)
+				if expr, ok := wholeCellFormulaVariable(c.formula); ok {
+					v, ok := r.RenderValueLenient(expr, loc, ctx, rep)
+					if ok {
+						c.formula = ""
+						c.value = cellScalarValue(v)
+					}
+				} else {
+					c.formula = renderFormulaTemplateLenient(c.formula, r, loc, ctx, rep)
+				}
 				continue
 			}
-			if raw, ok := UnwrapEscapedFormula(c.value); ok {
-				c.formula = renderFormulaTemplateLenient(raw, r, loc, ctx, rep)
-				c.value = ""
-				continue
+			if s, ok := c.value.(string); ok {
+				if raw, ok := UnwrapEscapedFormula(s); ok {
+					if expr, ok := wholeCellFormulaVariable(raw); ok {
+						v, ok := r.RenderValueLenient(expr, loc, ctx, rep)
+						if ok {
+							c.formula = ""
+							c.value = cellScalarValue(v)
+							continue
+						}
+					}
+					c.formula = renderFormulaTemplateLenient(raw, r, loc, ctx, rep)
+					c.value = nil
+					continue
+				}
 			}
 			if len(c.rich) > 0 {
 				combined := ""
@@ -106,21 +124,29 @@ func renderSnapshots(f *excelize.File, sheet string, rows []rowSnapshot, r *temp
 					combined += run.Text
 				}
 				if template.HasSyntax(combined) {
-					out := r.RenderStringLenient(combined, loc, ctx, rep)
-					font := c.rich[0].Font
-					c.rich = []excelize.RichTextRun{{Text: out, Font: font}}
-					c.value = ""
+					if expr, ok := template.WholeCellVariable(combined); ok {
+						v, ok := r.RenderValueLenient(expr, loc, ctx, rep)
+						if ok {
+							c.rich = nil
+							c.value = cellScalarValue(v)
+						}
+					} else {
+						out := r.RenderStringLenient(combined, loc, ctx, rep)
+						font := c.rich[0].Font
+						c.rich = []excelize.RichTextRun{{Text: out, Font: font}}
+						c.value = nil
+					}
 				}
 				continue
 			}
-			if c.value != "" && template.HasSyntax(c.value) && !strings.HasPrefix(c.value, formulaEscapeQuote) {
-				if expr, ok := template.WholeCellVariable(c.value); ok {
+			if s, ok := c.value.(string); ok && s != "" && template.HasSyntax(s) && !strings.HasPrefix(s, formulaEscapeQuote) {
+				if expr, ok := template.WholeCellVariable(s); ok {
 					v, ok := r.RenderValueLenient(expr, loc, ctx, rep)
 					if ok {
-						c.value = formatCellScalar(v)
+						c.value = cellScalarValue(v)
 					}
 				} else {
-					c.value = r.RenderStringLenient(c.value, loc, ctx, rep)
+					c.value = r.RenderStringLenient(s, loc, ctx, rep)
 				}
 			}
 		}
@@ -147,7 +173,7 @@ func applySnapshots(f *excelize.File, sheet string, startRow int, rows []rowSnap
 				if err := f.SetCellRichText(sheet, dst, snap.rich); err != nil {
 					return err
 				}
-			} else if snap.value != "" {
+			} else if !isEmptyScalar(snap.value) {
 				if err := f.SetCellValue(sheet, dst, snap.value); err != nil {
 					return err
 				}

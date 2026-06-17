@@ -55,6 +55,40 @@ func TestRenderSimpleVars(t *testing.T) {
 	if active != "true" && active != "TRUE" && active != "True" {
 		t.Fatalf("A3: got %q", active)
 	}
+	assertCellTypeNotString(t, g, "Sheet1", "A2")
+}
+
+func TestRenderNumericWholeCellFormula(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "tpl.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	jsonPath := filepath.Join(dir, "data.json")
+
+	f := excelize.NewFile()
+	_ = f.SetCellFormula("Sheet1", "B4", "{{ price }}")
+	if err := f.SaveAs(tpl); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	if err := os.WriteFile(jsonPath, []byte(`{"price":42.5}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := data.LoadContext(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xlsx.RenderFile(tpl, out, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := excelize.OpenFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	assertCell(t, g, "Sheet1", "B4", "42.5")
+	assertCellTypeNotString(t, g, "Sheet1", "B4")
 }
 
 func TestRenderFormula(t *testing.T) {
@@ -478,8 +512,8 @@ func TestRenderFormulaSumAfterLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer g.Close()
-	assertCell(t, g, "Sheet1", "B1", "10.0")
-	assertCell(t, g, "Sheet1", "B2", "20.0")
+	assertCell(t, g, "Sheet1", "B1", "10")
+	assertCell(t, g, "Sheet1", "B2", "20")
 	// Totals row shifts with marker removal; excelize adjusts row positions but not static range widths.
 	var formula string
 	for row := 1; row <= 8; row++ {
@@ -662,5 +696,16 @@ func assertCell(t *testing.T, f *excelize.File, sheet, cell, want string) {
 	}
 	if got != want {
 		t.Fatalf("%s: got %q want %q", cell, got, want)
+	}
+}
+
+func assertCellTypeNotString(t *testing.T, f *excelize.File, sheet, cell string) {
+	t.Helper()
+	typ, err := f.GetCellType(sheet, cell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if typ == excelize.CellTypeSharedString || typ == excelize.CellTypeInlineString {
+		t.Fatalf("%s: got string cell type %v", cell, typ)
 	}
 }

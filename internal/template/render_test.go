@@ -37,3 +37,25 @@ func TestRenderString(t *testing.T) {
 		t.Fatalf("EvalIterable items: %v %v", items, err)
 	}
 }
+
+func TestRenderValueNumericTypes(t *testing.T) {
+	r := template.NewRenderer()
+	ctx := exec.NewContext(map[string]any{
+		"count": 42,
+		"price": 42.5,
+	})
+	count, err := r.RenderValue("count", ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := count.(float64); !ok {
+		t.Fatalf("count: got %T %v", count, count)
+	}
+	price, err := r.RenderValue("price", ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := price.(float64); !ok {
+		t.Fatalf("price: got %T %v", price, price)
+	}
+}

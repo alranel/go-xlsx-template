@@ -53,11 +53,16 @@ func writeSimple(path string) error {
 	}
 	f := excelize.NewFile()
 	sheet := "Sheet1"
-	_ = f.SetCellValue(sheet, "A1", "Report: {{ title }}")
-	_ = f.SetCellValue(sheet, "A2", "Year: {{ year }}")
-	_ = f.SetCellValue(sheet, "A3", "Status: {% if active %}Active{% else %}Inactive{% endif %}")
-	_ = f.SetCellValue(sheet, "A4", "Price (2x): ")
-	_ = f.SetCellFormula(sheet, "B4", "={{ price }}*2")
+	_ = f.SetCellValue(sheet, "A1", "Report:")
+	_ = f.SetCellValue(sheet, "B1", "{{ title }}")
+	_ = f.SetCellValue(sheet, "A2", "Year:")
+	_ = f.SetCellValue(sheet, "B2", "{{ year }}")
+	_ = f.SetCellValue(sheet, "A3", "Status:")
+	_ = f.SetCellValue(sheet, "B3", "{% if active %}Active{% else %}Inactive{% endif %}")
+	_ = f.SetCellValue(sheet, "A4", "Price: ")
+	_ = f.SetCellFormula(sheet, "B4", "{{ price }}")
+	_ = f.SetCellValue(sheet, "A5", "Price (2x): ")
+	_ = f.SetCellFormula(sheet, "B5", "={{ price }}*2")
 	return f.SaveAs(path)
 }
 
