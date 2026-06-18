@@ -1,8 +1,10 @@
 package xlsx
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/alranel/go-xlsx-template/internal/render"
 	"github.com/alranel/go-xlsx-template/internal/template"
@@ -67,7 +69,15 @@ func RenderFileWithResult(templatePath, outputPath string, ctx *exec.Context, op
 }
 
 func openTemplate(path string) (*excelize.File, error) {
-	f, err := excelize.OpenFile(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("open template: %w", err)
+	}
+	data, err = repairWorkbookBytes(data)
+	if err != nil {
+		return nil, fmt.Errorf("repair template: %w", err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("open template: %w", err)
 	}
