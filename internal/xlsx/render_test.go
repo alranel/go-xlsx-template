@@ -274,6 +274,43 @@ func TestRenderRowLoop(t *testing.T) {
 	}
 }
 
+func TestRenderPlainForMarkers(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "tpl.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	jsonPath := filepath.Join(dir, "data.json")
+
+	f := excelize.NewFile()
+	_ = f.SetCellValue("Sheet1", "A1", "{% for item in items %}")
+	_ = f.SetCellValue("Sheet1", "A2", "{{ item.foo }}")
+	_ = f.SetCellValue("Sheet1", "A3", "{% endfor %}")
+	if err := f.SaveAs(tpl); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	if err := os.WriteFile(jsonPath, []byte(`{"items":[{"foo":"x"},{"foo":"y"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := data.LoadContext(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xlsx.RenderFile(tpl, out, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := excelize.OpenFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	for i, want := range []string{"x", "y"} {
+		cell, _ := excelize.CoordinatesToCellName(1, i+1)
+		assertCell(t, g, "Sheet1", cell, want)
+	}
+}
+
 func TestRenderRowIfFalse(t *testing.T) {
 	dir := t.TempDir()
 	tpl := filepath.Join(dir, "tpl.xlsx")

@@ -146,6 +146,41 @@ func TestValidateTRMarkerCellSkipped(t *testing.T) {
 	}
 }
 
+func TestValidatePlainForMarkers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tpl.xlsx")
+	f := excelize.NewFile()
+	_ = f.SetCellValue("Sheet1", "A1", "{% for item in items %}")
+	_ = f.SetCellValue("Sheet1", "A2", "{{ item.name }}")
+	_ = f.SetCellValue("Sheet1", "A3", "{% endfor %}")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	res, err := xlsx.ValidateFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Valid {
+		t.Fatalf("expected valid, issues: %#v", res.Issues)
+	}
+}
+
+func TestValidateBroken2Template(t *testing.T) {
+	path := filepath.Join("..", "..", "broken2.xlsx")
+	if _, err := os.Stat(path); err != nil {
+		t.Skip("broken2.xlsx not present")
+	}
+	res, err := xlsx.ValidateFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Valid {
+		t.Fatalf("expected valid, issues: %#v", res.Issues)
+	}
+}
+
 func TestValidateFormulaSegments(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "tpl.xlsx")

@@ -6,12 +6,16 @@ import (
 )
 
 var (
-	reVar      = regexp.MustCompile(`\{\{\s*([^}]+?)\s*\}\}`)
-	reTRFor    = regexp.MustCompile(`(?i)\{%\s*tr\s+for\s+(\w+)\s+in\s+(.+?)\s*%\}`)
-	reTRIf     = regexp.MustCompile(`(?i)\{%\s*tr\s+if\s+(.+?)\s*%\}`)
-	reTREndFor = regexp.MustCompile(`(?i)\{%\s*tr\s+endfor\s*%\}`)
-	reTRendif  = regexp.MustCompile(`(?i)\{%\s*tr\s+endif\s*%\}`)
-	reTRAny    = regexp.MustCompile(`(?i)\{%\s*tr\s+`)
+	reVar         = regexp.MustCompile(`\{\{\s*([^}]+?)\s*\}\}`)
+	reTRFor       = regexp.MustCompile(`(?i)\{%\s*tr\s+for\s+(\w+)\s+in\s+(.+?)\s*%\}`)
+	reTRIf        = regexp.MustCompile(`(?i)\{%\s*tr\s+if\s+(.+?)\s*%\}`)
+	reTREndFor    = regexp.MustCompile(`(?i)\{%\s*tr\s+endfor\s*%\}`)
+	reTRendif     = regexp.MustCompile(`(?i)\{%\s*tr\s+endif\s*%\}`)
+	reTRAny       = regexp.MustCompile(`(?i)\{%\s*tr\s+`)
+	rePlainFor    = regexp.MustCompile(`(?i)^\{%\s*for\s+(\w+)\s+in\s+([^%]+?)\s*%\}$`)
+	rePlainIf     = regexp.MustCompile(`(?i)^\{%\s*if\s+([^%]+?)\s*%\}$`)
+	rePlainEndFor = regexp.MustCompile(`(?i)^\{%\s*endfor\s*%\}$`)
+	rePlainEndIf  = regexp.MustCompile(`(?i)^\{%\s*endif\s*%\}$`)
 )
 
 // TRMarkerKind classifies a {%tr %} row marker.
@@ -44,7 +48,8 @@ func FindTRMarkerLine(s string) bool {
 	return IsTRMarkerCell(s)
 }
 
-// IsTRMarkerCell reports whether cell text is only a recognized {%tr %} row marker.
+// IsTRMarkerCell reports whether cell text is only a recognized row loop/conditional marker
+// ({%tr %} or plain {% for %}/{% if %}/{% endfor %}/{% endif %} on a marker-only row).
 func IsTRMarkerCell(s string) bool {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -54,22 +59,37 @@ func IsTRMarkerCell(s string) bool {
 	return ok
 }
 
-// FindTRMarker inspects concatenated row text for a {%tr %} marker.
+// FindTRMarker inspects concatenated row text for a row loop/conditional marker.
 func FindTRMarker(rowText string) (TRMarker, bool) {
 	rowText = strings.TrimSpace(rowText)
-	if !reTRAny.MatchString(rowText) {
+	if rowText == "" {
 		return TRMarker{}, false
 	}
-	if reTREndFor.MatchString(rowText) {
+	if reTRAny.MatchString(rowText) {
+		if reTREndFor.MatchString(rowText) {
+			return TRMarker{Kind: TREndFor}, true
+		}
+		if reTRendif.MatchString(rowText) {
+			return TRMarker{Kind: TREndIf}, true
+		}
+		if m := reTRFor.FindStringSubmatch(rowText); len(m) == 3 {
+			return TRMarker{Kind: TRFor, ForVar: m[1], ForExpr: strings.TrimSpace(m[2])}, true
+		}
+		if m := reTRIf.FindStringSubmatch(rowText); len(m) == 2 {
+			return TRMarker{Kind: TRIf, IfExpr: strings.TrimSpace(m[1])}, true
+		}
+		return TRMarker{}, false
+	}
+	if rePlainEndFor.MatchString(rowText) {
 		return TRMarker{Kind: TREndFor}, true
 	}
-	if reTRendif.MatchString(rowText) {
+	if rePlainEndIf.MatchString(rowText) {
 		return TRMarker{Kind: TREndIf}, true
 	}
-	if m := reTRFor.FindStringSubmatch(rowText); len(m) == 3 {
+	if m := rePlainFor.FindStringSubmatch(rowText); len(m) == 3 {
 		return TRMarker{Kind: TRFor, ForVar: m[1], ForExpr: strings.TrimSpace(m[2])}, true
 	}
-	if m := reTRIf.FindStringSubmatch(rowText); len(m) == 2 {
+	if m := rePlainIf.FindStringSubmatch(rowText); len(m) == 2 {
 		return TRMarker{Kind: TRIf, IfExpr: strings.TrimSpace(m[1])}, true
 	}
 	return TRMarker{}, false
