@@ -29,7 +29,7 @@ func expandTRBlocks(f *excelize.File, sheet string, r *template.Renderer, ctx *e
 		if len(blocks) == 0 {
 			return nil
 		}
-		// Process innermost block first (highest start row).
+		// Process outermost block first (lowest start row).
 		b := blocks[0]
 		if err := processTRBlock(f, sheet, r, ctx, rep, b); err != nil {
 			return err
@@ -109,7 +109,7 @@ func findTRBlocksFromRows(sheet string, rows [][]string) ([]trBlock, error) {
 		return nil, fmt.Errorf("sheet %q: unclosed {%%tr %%} block starting at row %d", sheet, stack[0].row)
 	}
 	sort.Slice(blocks, func(i, j int) bool {
-		return blocks[i].startRow > blocks[j].startRow
+		return blocks[i].startRow < blocks[j].startRow
 	})
 	return blocks, nil
 }
@@ -144,7 +144,6 @@ func expandTRForReplace(f *excelize.File, sheet string, r *template.Renderer, ct
 	}
 	bodyStart := b.startRow + 1
 	bodyEnd := b.endRow - 1
-	height := bodyEnd - bodyStart + 1
 
 	if len(items) == 0 {
 		return removeRows(f, sheet, b.startRow, b.endRow)
@@ -163,6 +162,10 @@ func expandTRForReplace(f *excelize.File, sheet string, r *template.Renderer, ct
 		if err != nil {
 			return err
 		}
+		rows, err = expandTRSnapshots(rows, f, sheet, r, child, rep, loc)
+		if err != nil {
+			return err
+		}
 		if err := renderSnapshots(f, sheet, rows, r, child, rep); err != nil {
 			return err
 		}
@@ -178,7 +181,7 @@ func expandTRForReplace(f *excelize.File, sheet string, r *template.Renderer, ct
 		if err := applySnapshots(f, sheet, dst, block); err != nil {
 			return err
 		}
-		dst += height
+		dst += len(block)
 	}
 	return nil
 }
@@ -206,6 +209,10 @@ func expandTRForIncremental(f *excelize.File, sheet string, r *template.Renderer
 		child := ctx.Inherit()
 		child.Set(b.forVar, item)
 		rows, err := cloneSnapshots(templateRows)
+		if err != nil {
+			return err
+		}
+		rows, err = expandTRSnapshots(rows, f, sheet, r, child, rep, loc)
 		if err != nil {
 			return err
 		}
@@ -322,7 +329,7 @@ func expandTRIf(f *excelize.File, sheet string, r *template.Renderer, ctx *exec.
 	loc := render.Location{Sheet: sheet, Row: b.startRow}
 	ok, evaluated := r.EvalConditionLenient(b.ifExpr, loc, ctx, rep)
 	if !evaluated {
-		return nil
+		return fmt.Errorf("sheet %q row %d: cannot evaluate {%%tr if %%} condition %q", sheet, b.startRow, b.ifExpr)
 	}
 	if !ok {
 		return removeRows(f, sheet, b.startRow, b.endRow)

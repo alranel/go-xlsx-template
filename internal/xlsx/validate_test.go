@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alranel/go-xlsx-template/internal/data"
 	"github.com/alranel/go-xlsx-template/internal/xlsx"
 	"github.com/xuri/excelize/v2"
 )
@@ -168,6 +169,29 @@ func TestValidatePlainForMarkers(t *testing.T) {
 	}
 }
 
+func TestValidateNestedTRForMarkers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tpl.xlsx")
+	f := excelize.NewFile()
+	_ = f.SetCellValue("Sheet1", "A1", "{%tr for order in orders %}")
+	_ = f.SetCellValue("Sheet1", "A2", "{%tr for line in order.lines %}")
+	_ = f.SetCellValue("Sheet1", "A3", "{{ line.name }}")
+	_ = f.SetCellValue("Sheet1", "A4", "{%tr endfor %}")
+	_ = f.SetCellValue("Sheet1", "A5", "{%tr endfor %}")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	res, err := xlsx.ValidateFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Valid {
+		t.Fatalf("expected valid, issues: %#v", res.Issues)
+	}
+}
+
 func TestValidateBroken2Template(t *testing.T) {
 	path := filepath.Join("..", "..", "broken2.xlsx")
 	if _, err := os.Stat(path); err != nil {
@@ -204,6 +228,32 @@ func TestValidateBroken3Template(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("ValidateFile hung on broken3.xlsx")
+	}
+}
+
+func TestRenderBroken4NoHang(t *testing.T) {
+	tpl := filepath.Join("..", "..", "broken4.xlsx")
+	dataPath := filepath.Join("..", "..", "test.json")
+	if _, err := os.Stat(tpl); err != nil {
+		t.Skip("broken4.xlsx not present")
+	}
+	if _, err := os.Stat(dataPath); err != nil {
+		t.Skip("test.json not present")
+	}
+	out := filepath.Join(t.TempDir(), "out.xlsx")
+	ctx, err := data.LoadContext(dataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- xlsx.RenderFile(tpl, out, ctx) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("RenderFile hung on broken4.xlsx")
 	}
 }
 

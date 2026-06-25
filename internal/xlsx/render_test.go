@@ -311,6 +311,191 @@ func TestRenderPlainForMarkers(t *testing.T) {
 	}
 }
 
+func TestRenderNestedTRFor(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "tpl.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	jsonPath := filepath.Join(dir, "data.json")
+
+	f := excelize.NewFile()
+	_ = f.SetCellValue("Sheet1", "A1", "{%tr for order in orders %}")
+	_ = f.SetCellValue("Sheet1", "A2", "{%tr for line in order.lines %}")
+	_ = f.SetCellValue("Sheet1", "A3", "{{ line.name }}")
+	_ = f.SetCellValue("Sheet1", "A4", "{%tr endfor %}")
+	_ = f.SetCellValue("Sheet1", "A5", "{%tr endfor %}")
+	if err := f.SaveAs(tpl); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	dataJSON := `{
+		"orders": [
+			{"lines": [{"name": "a"}, {"name": "b"}]},
+			{"lines": [{"name": "c"}]}
+		]
+	}`
+	if err := os.WriteFile(jsonPath, []byte(dataJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := data.LoadContext(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xlsx.RenderFile(tpl, out, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := excelize.OpenFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	for i, want := range []string{"a", "b", "c"} {
+		cell, _ := excelize.CoordinatesToCellName(1, i+1)
+		assertCell(t, g, "Sheet1", cell, want)
+	}
+}
+
+func TestRenderNestedPlainFor(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "tpl.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	jsonPath := filepath.Join(dir, "data.json")
+
+	f := excelize.NewFile()
+	_ = f.SetCellValue("Sheet1", "A1", "{% for order in orders %}")
+	_ = f.SetCellValue("Sheet1", "A2", "{% for line in order.lines %}")
+	_ = f.SetCellValue("Sheet1", "A3", "{{ line.name }}")
+	_ = f.SetCellValue("Sheet1", "A4", "{% endfor %}")
+	_ = f.SetCellValue("Sheet1", "A5", "{% endfor %}")
+	if err := f.SaveAs(tpl); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	dataJSON := `{
+		"orders": [
+			{"lines": [{"name": "x"}, {"name": "y"}]},
+			{"lines": [{"name": "z"}]}
+		]
+	}`
+	if err := os.WriteFile(jsonPath, []byte(dataJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := data.LoadContext(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xlsx.RenderFile(tpl, out, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := excelize.OpenFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	for i, want := range []string{"x", "y", "z"} {
+		cell, _ := excelize.CoordinatesToCellName(1, i+1)
+		assertCell(t, g, "Sheet1", cell, want)
+	}
+}
+
+func TestRenderNestedTRForWithIf(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "tpl.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	jsonPath := filepath.Join(dir, "data.json")
+
+	f := excelize.NewFile()
+	_ = f.SetCellValue("Sheet1", "A1", "{%tr for order in orders %}")
+	_ = f.SetCellValue("Sheet1", "A2", "{%tr if order.show %}")
+	_ = f.SetCellValue("Sheet1", "A3", "{%tr for line in order.lines %}")
+	_ = f.SetCellValue("Sheet1", "A4", "{{ line.name }}")
+	_ = f.SetCellValue("Sheet1", "A5", "{%tr endfor %}")
+	_ = f.SetCellValue("Sheet1", "A6", "{%tr endif %}")
+	_ = f.SetCellValue("Sheet1", "A7", "{%tr endfor %}")
+	if err := f.SaveAs(tpl); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	dataJSON := `{
+		"orders": [
+			{"show": true, "lines": [{"name": "a"}]},
+			{"show": false, "lines": [{"name": "skip"}]},
+			{"show": true, "lines": [{"name": "b"}, {"name": "c"}]}
+		]
+	}`
+	if err := os.WriteFile(jsonPath, []byte(dataJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := data.LoadContext(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xlsx.RenderFile(tpl, out, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := excelize.OpenFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	for i, want := range []string{"a", "b", "c"} {
+		cell, _ := excelize.CoordinatesToCellName(1, i+1)
+		assertCell(t, g, "Sheet1", cell, want)
+	}
+}
+
+func TestRenderTripleNestedTRFor(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "tpl.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	jsonPath := filepath.Join(dir, "data.json")
+
+	f := excelize.NewFile()
+	_ = f.SetCellValue("Sheet1", "A1", "{%tr for a in groups %}")
+	_ = f.SetCellValue("Sheet1", "A2", "{%tr for b in a.orders %}")
+	_ = f.SetCellValue("Sheet1", "A3", "{%tr for c in b.lines %}")
+	_ = f.SetCellValue("Sheet1", "A4", "{{ c.name }}")
+	_ = f.SetCellValue("Sheet1", "A5", "{%tr endfor %}")
+	_ = f.SetCellValue("Sheet1", "A6", "{%tr endfor %}")
+	_ = f.SetCellValue("Sheet1", "A7", "{%tr endfor %}")
+	if err := f.SaveAs(tpl); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	dataJSON := `{
+		"groups": [
+			{"orders": [{"lines": [{"name": "1"}, {"name": "2"}]}]},
+			{"orders": [{"lines": [{"name": "3"}]}, {"lines": [{"name": "4"}]}]}
+		]
+	}`
+	if err := os.WriteFile(jsonPath, []byte(dataJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := data.LoadContext(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xlsx.RenderFile(tpl, out, ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := excelize.OpenFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	for i, want := range []string{"1", "2", "3", "4"} {
+		cell, _ := excelize.CoordinatesToCellName(1, i+1)
+		assertCell(t, g, "Sheet1", cell, want)
+	}
+}
+
 func TestRenderRowIfFalse(t *testing.T) {
 	dir := t.TempDir()
 	tpl := filepath.Join(dir, "tpl.xlsx")
