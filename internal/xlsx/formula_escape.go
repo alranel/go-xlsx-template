@@ -103,30 +103,34 @@ func forEachUsedCell(f *excelize.File, sheet string, fn func(cell string) error)
 		seen[cell] = struct{}{}
 		return fn(cell)
 	}
+	maxCol := 0
 	for rowIdx, row := range rows {
+		if len(row) > maxCol {
+			maxCol = len(row)
+		}
 		for colIdx := range row {
 			if err := visit(colIdx+1, rowIdx+1); err != nil {
 				return err
 			}
 		}
 	}
-	cols, err := f.GetCols(sheet)
-	if err != nil {
-		return err
+	// Visit trailing columns that may hold formula-only template cells without
+	// calling GetCols, which can be pathologically slow when the sheet dimension
+	// spans to the last Excel row (e.g. A2:AF1048576).
+	if maxCol == 0 {
+		maxCol = 1
 	}
-	for colIdx, col := range cols {
-		for rowIdx := range col {
-			if rowIdx < len(rows) && colIdx < len(rows[rowIdx]) {
-				continue
-			}
-			if col[rowIdx] == "" {
-				cell, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+1)
-				formula, _ := f.GetCellFormula(sheet, cell)
-				if formula == "" {
-					continue
-				}
-			}
-			if err := visit(colIdx+1, rowIdx+1); err != nil {
+	maxRow := len(rows)
+	if maxRow == 0 {
+		maxRow = 1
+	}
+	for row := 1; row <= maxRow; row++ {
+		rowLen := 0
+		if row <= len(rows) {
+			rowLen = len(rows[row-1])
+		}
+		for col := rowLen + 1; col <= maxCol; col++ {
+			if err := visit(col, row); err != nil {
 				return err
 			}
 		}

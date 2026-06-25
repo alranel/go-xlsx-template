@@ -104,17 +104,13 @@ func validateSheet(f *excelize.File, sheet string, r *template.Renderer, c *vali
 }
 
 func validateTRStructure(f *excelize.File, sheet string, r *template.Renderer, c *validationCollector) {
-	maxRow, err := sheetMaxRow(f, sheet)
+	rows, err := f.GetRows(sheet)
 	if err != nil {
 		c.add(valLoc{sheet: sheet}, ValidationStructure, sheet, err.Error())
 		return
 	}
-	for row := 1; row <= maxRow; row++ {
-		text, err := rowText(f, sheet, row)
-		if err != nil {
-			c.add(valLoc{sheet: sheet, row: row}, ValidationStructure, "", err.Error())
-			continue
-		}
+	for row := 1; row <= len(rows); row++ {
+		text := rowTextFromRows(rows, row)
 		if template.FindTRMarkerLine(text) {
 			continue
 		}
@@ -124,7 +120,7 @@ func validateTRStructure(f *excelize.File, sheet string, r *template.Renderer, c
 		}
 	}
 
-	blocks, err := findTRBlocks(f, sheet)
+	blocks, err := findTRBlocksFromRows(sheet, rows)
 	if err != nil {
 		c.add(valLoc{sheet: sheet}, ValidationStructure, "", err.Error())
 		return

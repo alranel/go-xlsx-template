@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/alranel/go-xlsx-template/internal/xlsx"
 	"github.com/xuri/excelize/v2"
@@ -178,6 +179,31 @@ func TestValidateBroken2Template(t *testing.T) {
 	}
 	if !res.Valid {
 		t.Fatalf("expected valid, issues: %#v", res.Issues)
+	}
+}
+
+func TestValidateBroken3Template(t *testing.T) {
+	path := filepath.Join("..", "..", "broken3.xlsx")
+	if _, err := os.Stat(path); err != nil {
+		t.Skip("broken3.xlsx not present")
+	}
+	done := make(chan struct{})
+	var res xlsx.ValidationResult
+	var err error
+	go func() {
+		res, err = xlsx.ValidateFile(path)
+		close(done)
+	}()
+	select {
+	case <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !res.Valid {
+			t.Fatalf("expected valid, issues: %#v", res.Issues)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ValidateFile hung on broken3.xlsx")
 	}
 }
 

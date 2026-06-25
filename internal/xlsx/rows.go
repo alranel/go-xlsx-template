@@ -38,10 +38,15 @@ func expandTRBlocks(f *excelize.File, sheet string, r *template.Renderer, ctx *e
 }
 
 func findTRBlocks(f *excelize.File, sheet string) ([]trBlock, error) {
-	maxRow, err := sheetMaxRow(f, sheet)
+	rows, err := f.GetRows(sheet)
 	if err != nil {
 		return nil, err
 	}
+	return findTRBlocksFromRows(sheet, rows)
+}
+
+func findTRBlocksFromRows(sheet string, rows [][]string) ([]trBlock, error) {
+	maxRow := len(rows)
 	type frame struct {
 		kind    template.TRMarkerKind
 		row     int
@@ -53,10 +58,7 @@ func findTRBlocks(f *excelize.File, sheet string) ([]trBlock, error) {
 	var blocks []trBlock
 
 	for row := 1; row <= maxRow; row++ {
-		text, err := rowText(f, sheet, row)
-		if err != nil {
-			return nil, err
-		}
+		text := rowTextFromRows(rows, row)
 		marker, ok := template.FindTRMarker(text)
 		if !ok {
 			continue
@@ -244,20 +246,18 @@ func expandTRForIncremental(f *excelize.File, sheet string, r *template.Renderer
 }
 
 func findTRMarkerRow(f *excelize.File, sheet string, kind template.TRMarkerKind, hint int) (int, error) {
-	maxRow, err := sheetMaxRow(f, sheet)
+	rows, err := f.GetRows(sheet)
 	if err != nil {
 		return 0, err
 	}
+	maxRow := len(rows)
 	best := 0
 	bestDist := maxRow + 1
 	for row := 1; row <= maxRow; row++ {
 		if !rowIsTRMarkerOnly(f, sheet, row) {
 			continue
 		}
-		text, err := rowText(f, sheet, row)
-		if err != nil {
-			return 0, err
-		}
+		text := rowTextFromRows(rows, row)
 		m, ok := template.FindTRMarker(text)
 		if !ok || m.Kind != kind {
 			continue
@@ -349,26 +349,21 @@ func removeSingleRow(f *excelize.File, sheet string, row int) error {
 	return f.RemoveRow(sheet, row)
 }
 
-func rowText(f *excelize.File, sheet string, row int) (string, error) {
-	cols, err := f.GetCols(sheet)
-	if err != nil {
-		return "", err
+// rowTextFromRows builds concatenated non-empty cell text for a 1-based row.
+// {%tr %} markers are stored as cell values; avoid per-row GetCols/GetCellFormula
+// which can make excelize pathologically slow on some workbooks.
+func rowTextFromRows(rows [][]string, row int) string {
+	if row < 1 || row > len(rows) {
+		return ""
 	}
-	var parts []string
-	for colIdx, col := range cols {
-		if row-1 >= len(col) {
-			continue
-		}
-		v := col[row-1]
+	r := rows[row-1]
+	parts := make([]string, 0, len(r))
+	for _, v := range r {
 		if v != "" {
 			parts = append(parts, v)
 		}
-		cell, _ := excelize.CoordinatesToCellName(colIdx+1, row)
-		if formula, _ := f.GetCellFormula(sheet, cell); formula != "" {
-			parts = append(parts, formula)
-		}
 	}
-	return strings.Join(parts, " "), nil
+	return strings.Join(parts, " ")
 }
 
 func sheetMaxRow(f *excelize.File, sheet string) (int, error) {
