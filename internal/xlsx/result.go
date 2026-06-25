@@ -59,6 +59,9 @@ func RenderFileWithResult(templatePath, outputPath string, ctx *exec.Context, op
 	if err := f.UpdateLinkedValue(); err != nil {
 		return Result{Issues: rep.Issues()}, fmt.Errorf("clear formula cache: %w", err)
 	}
+	if err := tightenSheetDimensions(f); err != nil {
+		return Result{Issues: rep.Issues()}, fmt.Errorf("tighten sheet dimensions: %w", err)
+	}
 	if err := f.SaveAs(outputPath); err != nil {
 		return Result{Issues: rep.Issues()}, fmt.Errorf("save output: %w", err)
 	}

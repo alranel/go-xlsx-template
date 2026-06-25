@@ -23,10 +23,11 @@ type rowSnapshot struct {
 }
 
 func snapshotRowBlock(f *excelize.File, sheet string, startRow, endRow int) ([]rowSnapshot, error) {
-	maxCol, err := maxColumnInSheet(f, sheet)
+	sheetRows, err := f.GetRows(sheet)
 	if err != nil {
 		return nil, err
 	}
+	maxCol := maxColumnInRowRange(sheetRows, startRow, endRow)
 	var rows []rowSnapshot
 	for row := startRow; row <= endRow; row++ {
 		var cells []cellSnapshot

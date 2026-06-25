@@ -16,6 +16,10 @@ var (
 	worksheetPathRe = regexp.MustCompile(`^xl/worksheets/sheet\d+\.xml$`)
 	dimensionRefRe  = regexp.MustCompile(`<dimension ref="([^"]+)"`)
 	mergeCellRefRe  = regexp.MustCompile(`<mergeCell ref="([^"]+)"\s*/>`)
+	rowTagRe        = regexp.MustCompile(`<row r="(\d+)"`)
+	cellRefRe       = regexp.MustCompile(`<c r="([A-Z]+)(\d+)"`)
+	selfClosingRow  = regexp.MustCompile(`<row r="\d+"[^>]*/>`)
+	emptyRow        = regexp.MustCompile(`<row r="\d+"[^>]*>\s*</row>`)
 )
 
 // repairWorkbookBytes fixes known-bad worksheet metadata that makes excelize fail
@@ -47,6 +51,22 @@ func repairWorkbookBytes(data []byte) ([]byte, error) {
 				body = repaired
 				changed = true
 			}
+			repaired, ok, err = stripEmptyRows(body)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", f.Name, err)
+			}
+			if ok {
+				body = repaired
+				changed = true
+			}
+			repaired, ok, err = repairInflatedDimension(body)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", f.Name, err)
+			}
+			if ok {
+				body = repaired
+				changed = true
+			}
 		}
 		hdr := f.FileHeader
 		w, err := zw.CreateHeader(&hdr)
@@ -64,6 +84,88 @@ func repairWorkbookBytes(data []byte) ([]byte, error) {
 		return data, nil
 	}
 	return out.Bytes(), nil
+}
+
+// repairInflatedDimension clamps worksheet dimensions that extend to the last Excel
+// row while the sheet only contains a handful of populated rows (LibreOffice export quirk).
+func repairInflatedDimension(xml []byte) ([]byte, bool, error) {
+	s := string(xml)
+	m := dimensionRefRe.FindStringSubmatch(s)
+	if len(m) != 2 {
+		return xml, false, nil
+	}
+	dim := m[1]
+	parts := strings.Split(dim, ":")
+	if len(parts) != 2 {
+		return xml, false, nil
+	}
+	_, endRow, err := excelize.CellNameToCoordinates(parts[1])
+	if err != nil {
+		return xml, false, nil
+	}
+	maxDataRow := maxRowWithCellsInXML(s)
+	if maxDataRow == 0 || endRow <= maxDataRow {
+		return xml, false, nil
+	}
+	endCol, _, err := excelize.CellNameToCoordinates(parts[1])
+	if err != nil {
+		return xml, false, nil
+	}
+	newEnd, err := excelize.CoordinatesToCellName(endCol, maxDataRow)
+	if err != nil {
+		return xml, false, nil
+	}
+	newDim := parts[0] + ":" + newEnd
+	if newDim == dim {
+		return xml, false, nil
+	}
+	out := dimensionRefRe.ReplaceAllString(s, `<dimension ref="`+newDim+`"`)
+	return []byte(out), true, nil
+}
+
+func maxRowWithCellsInXML(s string) int {
+	max := 0
+	for _, m := range cellRefRe.FindAllStringSubmatch(s, -1) {
+		if len(m) != 3 {
+			continue
+		}
+		row, err := strconv.Atoi(m[2])
+		if err == nil && row > max {
+			max = row
+		}
+	}
+	return max
+}
+
+func stripEmptyRows(xml []byte) ([]byte, bool, error) {
+	s := string(xml)
+	changed := false
+	out := selfClosingRow.ReplaceAllStringFunc(s, func(string) string {
+		changed = true
+		return ""
+	})
+	out2 := emptyRow.ReplaceAllStringFunc(out, func(string) string {
+		changed = true
+		return ""
+	})
+	if !changed {
+		return xml, false, nil
+	}
+	return []byte(out2), true, nil
+}
+
+func maxRowTagInXML(s string) int {
+	max := 0
+	for _, m := range rowTagRe.FindAllStringSubmatch(s, -1) {
+		if len(m) != 2 {
+			continue
+		}
+		row, err := strconv.Atoi(m[1])
+		if err == nil && row > max {
+			max = row
+		}
+	}
+	return max
 }
 
 func repairWorksheetMergeCells(xml []byte) ([]byte, bool, error) {
@@ -180,4 +282,63 @@ func lastColFromDimension(dim string) int {
 		return 0
 	}
 	return col
+}
+
+// tightenSheetDimensions resets each sheet's used range to the actual populated rows
+// so excelize save does not scan spurious million-row dimensions.
+func tightenSheetDimensions(f *excelize.File) error {
+	for _, sheet := range f.GetSheetList() {
+		rows, err := f.GetRows(sheet)
+		if err != nil {
+			return fmt.Errorf("sheet %q: %w", sheet, err)
+		}
+		if len(rows) == 0 {
+			if err := f.SetSheetDimension(sheet, ""); err != nil {
+				return fmt.Errorf("sheet %q: %w", sheet, err)
+			}
+			continue
+		}
+		minRow, maxRow := 0, 0
+		maxCol := 0
+		for r, row := range rows {
+			for c, v := range row {
+				if strings.TrimSpace(v) == "" {
+					continue
+				}
+				rowNum := r + 1
+				colNum := c + 1
+				if minRow == 0 || rowNum < minRow {
+					minRow = rowNum
+				}
+				if rowNum > maxRow {
+					maxRow = rowNum
+				}
+				if colNum > maxCol {
+					maxCol = colNum
+				}
+			}
+		}
+		if maxRow == 0 {
+			if err := f.SetSheetDimension(sheet, ""); err != nil {
+				return fmt.Errorf("sheet %q: %w", sheet, err)
+			}
+			continue
+		}
+		if maxCol == 0 {
+			maxCol = 1
+		}
+		start, err := excelize.CoordinatesToCellName(1, minRow)
+		if err != nil {
+			return err
+		}
+		end, err := excelize.CoordinatesToCellName(maxCol, maxRow)
+		if err != nil {
+			return err
+		}
+		ref := start + ":" + end
+		if err := f.SetSheetDimension(sheet, ref); err != nil {
+			return fmt.Errorf("sheet %q: %w", sheet, err)
+		}
+	}
+	return nil
 }

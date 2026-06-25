@@ -89,26 +89,13 @@ func copyCell(f *excelize.File, sheet, srcCell, dstCell string) error {
 }
 
 func maxColumnInRow(f *excelize.File, sheet string, row int) (int, error) {
-	cols, err := f.GetCols(sheet)
-	if err != nil {
-		return 0, err
-	}
-	max := 0
-	for colIdx, col := range cols {
-		if row-1 < len(col) && col[row-1] != "" {
-			if colIdx+1 > max {
-				max = colIdx + 1
-			}
-		}
-	}
 	rows, err := f.GetRows(sheet)
 	if err != nil {
-		return max, err
+		return 26, err
 	}
-	if row <= len(rows) {
-		if len(rows[row-1]) > max {
-			max = len(rows[row-1])
-		}
+	max := 0
+	if row > 0 && row <= len(rows) {
+		max = len(rows[row-1])
 	}
 	if max == 0 {
 		max = 26
@@ -132,11 +119,36 @@ func copyRowBlock(f *excelize.File, sheet string, srcStart, srcEnd, dstStart int
 }
 
 func maxColumnInSheet(f *excelize.File, sheet string) (int, error) {
-	cols, err := f.GetCols(sheet)
+	rows, err := f.GetRows(sheet)
 	if err != nil {
 		return 26, err
 	}
-	return len(cols), nil
+	max := 0
+	for _, row := range rows {
+		if len(row) > max {
+			max = len(row)
+		}
+	}
+	if max == 0 {
+		max = 26
+	}
+	return max, nil
+}
+
+func maxColumnInRowRange(rows [][]string, startRow, endRow int) int {
+	max := 0
+	for row := startRow; row <= endRow; row++ {
+		if row < 1 || row > len(rows) {
+			continue
+		}
+		if len(rows[row-1]) > max {
+			max = len(rows[row-1])
+		}
+	}
+	if max == 0 {
+		max = 1
+	}
+	return max
 }
 
 func copyMergesInBlock(f *excelize.File, sheet string, srcStart, srcEnd, dstStart int) error {
